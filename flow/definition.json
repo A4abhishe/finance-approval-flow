@@ -1,0 +1,581 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": { "defaultValue": {}, "type": "Object" },
+    "$authentication": { "defaultValue": {}, "type": "SecureObject" }
+  },
+  "triggers": {
+    "When_a_new_response_is_submitted": {
+      "splitOn": "@triggerOutputs()?['body/value']",
+      "type": "OpenApiConnectionWebhook",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_microsoftforms",
+          "connectionName": "shared_microsoftforms",
+          "operationId": "CreateFormWebhook"
+        },
+        "parameters": { "form_id": "YOUR_FORM_ID" },
+        "authentication": "@parameters('$authentication')"
+      }
+    }
+  },
+  "actions": {
+    "Get_response_details": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_microsoftforms",
+          "connectionName": "shared_microsoftforms",
+          "operationId": "GetFormResponseById"
+        },
+        "parameters": {
+          "form_id": "YOUR_FORM_ID",
+          "response_id": "@triggerOutputs()?['body/resourceData/responseId']"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Parse_JSON": {
+      "runAfter": { "Get_response_details": ["Succeeded"] },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@outputs('Get_response_details')?['body/r82fac197aaa04133849a96d6a402a427']",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "link": { "type": "string" },
+              "id": { "type": "string" },
+              "type": {},
+              "size": { "type": "integer" },
+              "referenceId": { "type": "string" },
+              "driveId": { "type": "string" },
+              "status": { "type": "integer" }
+            },
+            "required": ["name", "link", "id", "type", "size", "referenceId", "driveId", "status"]
+          }
+        }
+      }
+    },
+    "Invoice_Link_Clean": {
+      "runAfter": { "Parse_JSON": ["Succeeded"] },
+      "type": "Compose",
+      "inputs": "@first(body('Parse_JSON'))?['link']"
+    },
+    "Parse_JSON_-_PAN_Card": {
+      "runAfter": { "Invoice_Link_Clean": ["Succeeded"] },
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@outputs('Get_response_details')?['body/rc5b94bd1abba45c2a393d1b6a7833249']",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "link": { "type": "string" },
+              "id": { "type": "string" },
+              "type": {},
+              "size": { "type": "integer" },
+              "referenceId": { "type": "string" },
+              "driveId": { "type": "string" },
+              "status": { "type": "integer" }
+            },
+            "required": ["name", "link", "id", "type", "size", "referenceId", "driveId", "status"]
+          }
+        }
+      }
+    },
+    "PAN_Link_Clean": {
+      "runAfter": { "Parse_JSON_-_PAN_Card": ["Succeeded"] },
+      "type": "Compose",
+      "inputs": "@first(body('Parse_JSON_-_PAN_Card'))?['link']"
+    },
+    "Compose": {
+      "runAfter": { "PAN_Link_Clean": ["Succeeded"] },
+      "type": "Compose",
+      "inputs": "@concat('PAY-', formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'yyyyMMdd-HHmmss'), '-', toUpper(substring(guid(), 0, 4)))"
+    },
+    "Add_a_row_into_a_table": {
+      "runAfter": { "Compose": ["Succeeded"] },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+          "connectionName": "shared_excelonlinebusiness",
+          "operationId": "AddRowV2"
+        },
+        "parameters": {
+          "source": "me",
+          "drive": "YOUR_DRIVE_ID",
+          "file": "YOUR_FILE_ID",
+          "table": "YOUR_TABLE_ID",
+          "item/Request ID": "@outputs('Compose')",
+          "item/Month": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'MMMM')",
+          "item/Year": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'yyyy')",
+          "item/Date of Request": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy')",
+          "item/Time of Request": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'hh:mm tt')",
+          "item/Current Status": "Pending Level 1 Approval",
+          "item/Department": "@outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']",
+          "item/Requested By": "@outputs('Get_response_details')?['body/r29f7deb40ccd4177a15ec1e4157911af']",
+          "item/Requester Email": "@outputs('Get_response_details')?['body/responder']",
+          "item/Vendor Type": "@outputs('Get_response_details')?['body/r97488a6f52624b4bbc30dc19c908d549']",
+          "item/Vendor Name": "@outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']",
+          "item/PAN Number": "@outputs('Get_response_details')?['body/r2060123591774095a6d4d167d4a64c80']",
+          "item/GST Number": "@outputs('Get_response_details')?['body/rf13b9025045f457880fb1ab7fe6eb958']",
+          "item/Amount Without GST": "@outputs('Get_response_details')?['body/r10924f2c779a48b38c9e2e80ee195924']",
+          "item/GST Amount": "@outputs('Get_response_details')?['body/r2712a4881ded41c18fddc59b41776880']",
+          "item/Total Amount": "@outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']",
+          "item/Payment Reason": "@outputs('Get_response_details')?['body/r902bf4632a59496184f174b252242e3b']",
+          "item/Expected Payment Date": "@outputs('Get_response_details')?['body/r6697510267f64be5834663cada6088af']",
+          "item/Account Holder Name": "@outputs('Get_response_details')?['body/r1228bcd741ff4fb695f2b07f5e85f469']",
+          "item/Account Number": "@outputs('Get_response_details')?['body/r53a5a8fc7dfc493eb9cf815a743e818d']",
+          "item/IFSC Code": "@outputs('Get_response_details')?['body/rebe5045b4db14655bf0e4e73eea97c19']",
+          "item/Invoice Link": "@outputs('Invoice_Link_Clean')",
+          "item/PAN Link": "@outputs('PAN_Link_Clean')",
+          "item/Cancelled Cheque Link": "@outputs('Get_response_details')?['body/r5285e2c3c3f344a5bac02d4f53abed85']",
+          "item/Level 1 Approval": "Pending",
+          "item/Level 2 Approval": "Pending",
+          "item/Payment Status": "Pending"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Send_an_email_(V2)": {
+      "runAfter": { "Add_a_row_into_a_table": ["Succeeded"] },
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+          "connectionName": "shared_office365",
+          "operationId": "SendEmailV2"
+        },
+        "parameters": {
+          "emailMessage/To": "finance-ops@example.com",
+          "emailMessage/Subject": "[@{outputs('Compose')}] | @{outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']} | Finance Approval | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']} | @{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}",
+          "emailMessage/Body": "<p>Hello Team,<br><br>A new finance request has been raised and requires approval.<br><br>Request ID: @{outputs('Compose')}<br><br>Department: @{outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']}<br><br>Requested By: @{outputs('Get_response_details')?['body/r29f7deb40ccd4177a15ec1e4157911af']}<br><br>Vendor Name: @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}<br><br>Vendor Type: @{outputs('Get_response_details')?['body/r97488a6f52624b4bbc30dc19c908d549']}<br><br>Total Amount: ₹ @{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}<br><br>Payment Reason: @{outputs('Get_response_details')?['body/r902bf4632a59496184f174b252242e3b']}<br><br>Current Status:<br>Pending Level 1 Approval<br><br>Please review and approve through the approval workflow.<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+          "emailMessage/Cc": "@{outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']};level1.approver@example.com;level2.approver@example.com;accounts@example.com",
+          "emailMessage/Importance": "Normal"
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Start_and_wait_for_an_approval": {
+      "runAfter": { "Send_an_email_(V2)": ["Succeeded"] },
+      "type": "OpenApiConnectionWebhook",
+      "inputs": {
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+          "connectionName": "shared_approvals",
+          "operationId": "StartAndWaitForAnApproval"
+        },
+        "parameters": {
+          "approvalType": "Basic",
+          "WebhookApprovalCreationInput/title": "Finance Approval Required – @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+          "WebhookApprovalCreationInput/assignedTo": "level1.approver@example.com;",
+          "WebhookApprovalCreationInput/details": "Request ID: @{outputs('Compose')}\n\nDepartment: @{outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']}\n\nVendor Name: @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}\n\nTotal Amount: @{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}\n\nPayment Reason: @{outputs('Get_response_details')?['body/r902bf4632a59496184f174b252242e3b']}",
+          "WebhookApprovalCreationInput/enableNotifications": true,
+          "WebhookApprovalCreationInput/enableReassignment": true
+        },
+        "authentication": "@parameters('$authentication')"
+      }
+    },
+    "Condition": {
+      "runAfter": { "Start_and_wait_for_an_approval": ["Succeeded"] },
+      "type": "If",
+      "expression": {
+        "and": [
+          { "equals": ["@outputs('Start_and_wait_for_an_approval')?['body/outcome']", "Approve"] }
+        ]
+      },
+      "actions": {
+        "For_each_1": {
+          "runAfter": {},
+          "type": "Foreach",
+          "foreach": "@outputs('Start_and_wait_for_an_approval')?['body/responses']",
+          "actions": {
+            "Update_a_row": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                  "connectionName": "shared_excelonlinebusiness",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "source": "me",
+                  "drive": "YOUR_DRIVE_ID",
+                  "file": "YOUR_FILE_ID",
+                  "table": "YOUR_TABLE_ID",
+                  "idColumn": "Request ID",
+                  "id": "@outputs('Compose')",
+                  "item/Current Status": "Pending Level 2 Approval",
+                  "item/Level 1 Approval": "Approved",
+                  "item/Level 1 Approval Date": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')",
+                  "item/Level 1 Remarks": "@items('For_each_1')?['comments']",
+                  "item/Last Updated At": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        },
+        "Send_an_email_(V2)_1": {
+          "runAfter": { "For_each_1": ["Succeeded"] },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+              "connectionName": "shared_office365",
+              "operationId": "SendEmailV2"
+            },
+            "parameters": {
+              "emailMessage/To": "finance-ops@example.com",
+              "emailMessage/Subject": "[@{outputs('Compose')}] | @{outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']} | Finance Approval | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']} | @{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}",
+              "emailMessage/Body": "<p>Update:<br><br>The Level 1 approver has approved this finance request. ✅<br><br>Request ID: @{outputs('Compose')}<br><br>Approved At: @{formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')}<br><br>Current Status:<br>Pending Level 2 Approval<br><br>Next Step:<br>Awaiting Level 2 approval.<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+              "emailMessage/Cc": "@{outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']};level2.approver@example.com;accounts@example.com",
+              "emailMessage/Importance": "Normal"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Start_and_wait_for_an_approval_1": {
+          "runAfter": { "Send_an_email_(V2)_1": ["Succeeded"] },
+          "type": "OpenApiConnectionWebhook",
+          "inputs": {
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+              "connectionName": "shared_approvals",
+              "operationId": "StartAndWaitForAnApproval"
+            },
+            "parameters": {
+              "approvalType": "Basic",
+              "WebhookApprovalCreationInput/title": "Finance Approval Required – @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+              "WebhookApprovalCreationInput/assignedTo": "level2.approver@example.com;",
+              "WebhookApprovalCreationInput/details": "Request ID: @{outputs('Compose')}\n\nDepartment: @{outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']}\n\nVendor Name: @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}\n\nTotal Amount: @{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}\n\nPayment Reason: @{outputs('Get_response_details')?['body/r902bf4632a59496184f174b252242e3b']}\n\nLevel 1 Approval: Approved ✅\n\nApproved At: @{formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')}\n",
+              "WebhookApprovalCreationInput/enableNotifications": true,
+              "WebhookApprovalCreationInput/enableReassignment": true
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Condition_1": {
+          "runAfter": { "Start_and_wait_for_an_approval_1": ["Succeeded"] },
+          "type": "If",
+          "expression": {
+            "and": [
+              { "equals": ["@outputs('Start_and_wait_for_an_approval_1')?['body/outcome']", "Approve"] }
+            ]
+          },
+          "actions": {
+            "For_each_2": {
+              "runAfter": {},
+              "type": "Foreach",
+              "foreach": "@outputs('Start_and_wait_for_an_approval_1')?['body/responses']",
+              "actions": {
+                "Update_a_row_1": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                      "connectionName": "shared_excelonlinebusiness",
+                      "operationId": "PatchItem"
+                    },
+                    "parameters": {
+                      "source": "me",
+                      "drive": "YOUR_DRIVE_ID",
+                      "file": "YOUR_FILE_ID",
+                      "table": "YOUR_TABLE_ID",
+                      "idColumn": "Request ID",
+                      "id": "@outputs('Compose')",
+                      "item/Current Status": "Ready for Finance Processing",
+                      "item/Level 2 Approval": "Approved",
+                      "item/Level 2 Approval Date": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')",
+                      "item/Level 2 Remarks": "@items('For_each_2')?['comments']",
+                      "item/Last Updated At": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')",
+                      "item/Level 2 Approval Raw": "@utcNow()"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              }
+            },
+            "Send_an_email_(V2)_2": {
+              "runAfter": { "For_each_2": ["Succeeded"] },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "connectionName": "shared_office365",
+                  "operationId": "SendEmailV2"
+                },
+                "parameters": {
+                  "emailMessage/To": "accounts@example.com",
+                  "emailMessage/Subject": "[@{outputs('Compose')}] | @{outputs('Get_response_details')?['body/r14e75f42c7704ee29cc08d0e5be08ba9']} | Finance Approval | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']} | @{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}",
+                  "emailMessage/Body": "<p>Update:<br><br>The Level 2 approver has approved this finance request. ✅<br><br>Request ID: @{outputs('Compose')}<br><br>Approved At: @{formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')}<br><br>Current Status:<br>Ready for Finance Processing<br><br>Next Step:<br>The accounts team may proceed with processing.<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+                  "emailMessage/Cc": "@{outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']};level1.approver@example.com;level2.approver@example.com;finance-ops@example.com",
+                  "emailMessage/Importance": "Normal"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Start_and_wait_for_an_approval_2": {
+              "runAfter": { "Send_an_email_(V2)_2": ["Succeeded"] },
+              "type": "OpenApiConnectionWebhook",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "connectionName": "shared_approvals",
+                  "operationId": "StartAndWaitForAnApproval"
+                },
+                "parameters": {
+                  "approvalType": "CustomResponse",
+                  "WebhookApprovalCreationInput/responseOptions": ["Payment Processed", "Payment Not Processed"],
+                  "WebhookApprovalCreationInput/title": "Payment Processing Required | @{outputs('Compose')} | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+                  "WebhookApprovalCreationInput/assignedTo": "accounts@example.com;",
+                  "WebhookApprovalCreationInput/details": "Request ID:\n@{outputs('Compose')}\n\nVendor:\n@{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}\n\nAmount:\n@{outputs('Get_response_details')?['body/r5a67765103ce49beb05abef8fd56ca8d']}\n\nStatus:\nReady for Finance Processing\n\nPlease select:\n\nPayment Processed\nOR\nPayment Not Processed\n\nMandatory comment format:\n\nIf processed:\n\nUTR:\nDate:\nRemarks:\n\nIf not processed:\n\nETA:\nReason:",
+                  "WebhookApprovalCreationInput/requestor": "finance-ops@example.com",
+                  "WebhookApprovalCreationInput/enableNotifications": true,
+                  "WebhookApprovalCreationInput/enableReassignment": true
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Condition_2": {
+              "runAfter": { "Start_and_wait_for_an_approval_2": ["Succeeded"] },
+              "type": "If",
+              "expression": {
+                "and": [
+                  { "equals": ["@outputs('Start_and_wait_for_an_approval_2')?['body/outcome']", "Payment Processed"] }
+                ]
+              },
+              "actions": {
+                "For_each": {
+                  "runAfter": {},
+                  "type": "Foreach",
+                  "foreach": "@outputs('Start_and_wait_for_an_approval_2')?['body/responses']",
+                  "actions": {
+                    "Update_a_row_2": {
+                      "runAfter": {},
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                          "connectionName": "shared_excelonlinebusiness",
+                          "operationId": "PatchItem"
+                        },
+                        "parameters": {
+                          "source": "me",
+                          "drive": "YOUR_DRIVE_ID",
+                          "file": "YOUR_FILE_ID",
+                          "table": "YOUR_TABLE_ID",
+                          "idColumn": "Request ID",
+                          "id": "@outputs('Compose')",
+                          "item/Current Status": "Payment Cleared",
+                          "item/Finance Remarks": "@items('For_each')?['comments']",
+                          "item/Payment Status": "Processed",
+                          "item/Last Updated At": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Send_an_email_(V2)_3": {
+                      "runAfter": { "Update_a_row_2": ["Succeeded"] },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                          "connectionName": "shared_office365",
+                          "operationId": "SendEmailV2"
+                        },
+                        "parameters": {
+                          "emailMessage/To": "@outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']",
+                          "emailMessage/Subject": "Payment Processed | @{outputs('Compose')} | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+                          "emailMessage/Body": "<p>Update:<br><br>The accounts team has processed this finance request. ✅<br><br>Request ID: @{outputs('Compose')}<br><br>Vendor: @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}<br><br>Comments / UTR Details: @{items('For_each')?['comments']}<br><br>Current Status:<br>Payment Cleared<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+                          "emailMessage/Importance": "Normal"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "For_each_-_Not_Processed": {
+                    "runAfter": {},
+                    "type": "Foreach",
+                    "foreach": "@outputs('Start_and_wait_for_an_approval_2')?['body/responses']",
+                    "actions": {
+                      "Update_a_row_-_Not_Processed": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                            "connectionName": "shared_excelonlinebusiness",
+                            "operationId": "PatchItem"
+                          },
+                          "parameters": {
+                            "source": "me",
+                            "drive": "YOUR_DRIVE_ID",
+                            "file": "YOUR_FILE_ID",
+                            "table": "YOUR_TABLE_ID",
+                            "idColumn": "Request ID",
+                            "id": "@outputs('Compose')",
+                            "item/Current Status": "Payment On Hold",
+                            "item/Finance Remarks": "@items('For_each_-_Not_Processed')?['comments']",
+                            "item/Payment Status": "Not Processed",
+                            "item/Last Updated At": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Send_an_email_-_Not_Processed": {
+                        "runAfter": { "Update_a_row_-_Not_Processed": ["Succeeded"] },
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                            "connectionName": "shared_office365",
+                            "operationId": "SendEmailV2"
+                          },
+                          "parameters": {
+                            "emailMessage/To": "@outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']",
+                            "emailMessage/Subject": "Payment On Hold | @{outputs('Compose')} | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+                            "emailMessage/Body": "<p>Update:<br><br>This finance request is approved but the payment could not be processed yet.<br><br>Request ID: @{outputs('Compose')}<br><br>ETA / Reason: @{items('For_each_-_Not_Processed')?['comments']}<br><br>Current Status:<br>Payment On Hold<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+                            "emailMessage/Importance": "Normal"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "For_each_-_Level_2_Rejected": {
+                "runAfter": {},
+                "type": "Foreach",
+                "foreach": "@outputs('Start_and_wait_for_an_approval_1')?['body/responses']",
+                "actions": {
+                  "Update_a_row_-_Level_2_Rejected": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                        "connectionName": "shared_excelonlinebusiness",
+                        "operationId": "PatchItem"
+                      },
+                      "parameters": {
+                        "source": "me",
+                        "drive": "YOUR_DRIVE_ID",
+                        "file": "YOUR_FILE_ID",
+                        "table": "YOUR_TABLE_ID",
+                        "idColumn": "Request ID",
+                        "id": "@outputs('Compose')",
+                        "item/Current Status": "Rejected at Level 2",
+                        "item/Level 2 Approval": "Rejected",
+                        "item/Level 2 Approval Date": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')",
+                        "item/Level 2 Remarks": "@items('For_each_-_Level_2_Rejected')?['comments']",
+                        "item/Payment Status": "Cancelled",
+                        "item/Last Updated At": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  },
+                  "Send_an_email_-_Level_2_Rejected": {
+                    "runAfter": { "Update_a_row_-_Level_2_Rejected": ["Succeeded"] },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "parameters": {
+                        "emailMessage/To": "@outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']",
+                        "emailMessage/Subject": "Request Rejected | @{outputs('Compose')} | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+                        "emailMessage/Body": "<p>Update:<br><br>The Level 2 approver has rejected this finance request. ❌<br><br>Request ID: @{outputs('Compose')}<br><br>Remarks: @{items('For_each_-_Level_2_Rejected')?['comments']}<br><br>Please raise a new request if needed.<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+                        "emailMessage/Cc": "level1.approver@example.com;finance-ops@example.com",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "For_each_-_Level_1_Rejected": {
+            "runAfter": {},
+            "type": "Foreach",
+            "foreach": "@outputs('Start_and_wait_for_an_approval')?['body/responses']",
+            "actions": {
+              "Update_a_row_-_Level_1_Rejected": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                    "connectionName": "shared_excelonlinebusiness",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "source": "me",
+                    "drive": "YOUR_DRIVE_ID",
+                    "file": "YOUR_FILE_ID",
+                    "table": "YOUR_TABLE_ID",
+                    "idColumn": "Request ID",
+                    "id": "@outputs('Compose')",
+                    "item/Current Status": "Rejected at Level 1",
+                    "item/Level 1 Approval": "Rejected",
+                    "item/Level 1 Approval Date": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')",
+                    "item/Level 1 Remarks": "@items('For_each_-_Level_1_Rejected')?['comments']",
+                    "item/Payment Status": "Cancelled",
+                    "item/Last Updated At": "@formatDateTime(convertTimeZone(utcNow(),'UTC','India Standard Time'),'dd-MM-yyyy hh:mm tt')"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              },
+              "Send_an_email_-_Level_1_Rejected": {
+                "runAfter": { "Update_a_row_-_Level_1_Rejected": ["Succeeded"] },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "connectionName": "shared_office365",
+                    "operationId": "SendEmailV2"
+                  },
+                  "parameters": {
+                    "emailMessage/To": "@outputs('Get_response_details')?['body/r145c2587a18f45bfa89ec45f7655a67d']",
+                    "emailMessage/Subject": "Request Rejected | @{outputs('Compose')} | @{outputs('Get_response_details')?['body/rff082552afd94830a28cfdbdd7482ae2']}",
+                    "emailMessage/Body": "<p>Update:<br><br>The Level 1 approver has rejected this finance request. ❌<br><br>Request ID: @{outputs('Compose')}<br><br>Remarks: @{items('For_each_-_Level_1_Rejected')?['comments']}<br><br>Please raise a new request if needed.<br><br>Regards,<br>Finance Team<br>Your Organization</p>",
+                    "emailMessage/Cc": "finance-ops@example.com",
+                    "emailMessage/Importance": "Normal"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}
