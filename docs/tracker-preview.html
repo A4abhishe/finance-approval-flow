@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Finance Master Tracker (dummy data)</title>
+<style>
+  body { margin: 0; padding: 20px; background: #f3f2f1; font-family: "Segoe UI", Arial, sans-serif; width: 1200px; box-sizing: border-box; color: #201f1e; }
+  .bar { background: #217346; color: #fff; padding: 10px 14px; font-weight: 600; font-size: 15px; }
+  .bar small { font-weight: 400; opacity: .85; margin-left: 10px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; font-size: 12.5px; }
+  th { background: #e1dfdd; text-align: left; padding: 7px 8px; border: 1px solid #c8c6c4; white-space: nowrap; }
+  td { padding: 6px 8px; border: 1px solid #e1dfdd; white-space: nowrap; }
+  td.n { text-align: right; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; }
+  .p1 { background: #fff4ce; color: #8a6d00; }
+  .p2 { background: #deecf9; color: #0b5394; }
+  .rd { background: #e8daef; color: #5b2c83; }
+  .ok { background: #dff6dd; color: #107c10; }
+  .rj { background: #fde7e9; color: #a4262c; }
+  .hd { background: #ffe9d6; color: #8e4b00; }
+  .note { font-size: 12px; color: #605e5c; margin-top: 8px; }
+</style>
+</head>
+<body>
+  <div class="bar">Finance_Master_Tracker.xlsx <small>updated automatically by the flow · dummy data</small></div>
+  <table>
+    <tr><th>Request ID</th><th>Date</th><th>Department</th><th>Vendor</th><th class="n">Total (₹)</th><th>Level 1</th><th>Level 2</th><th>Payment</th><th>Current Status</th><th>Last Updated</th></tr>
+    <tr><td>PAY-20261028-101512-4F2A</td><td>28-10-2026</td><td>Marketing</td><td>Vendor A</td><td class="n">59,000</td><td>Approved</td><td>Approved</td><td>Processed</td><td><span class="pill ok">Payment Cleared</span></td><td>29-10-2026 04:12 PM</td></tr>
+    <tr><td>PAY-20261029-113044-9C1D</td><td>29-10-2026</td><td>Academics</td><td>Vendor B</td><td class="n">1,18,000</td><td>Approved</td><td>Approved</td><td>Pending</td><td><span class="pill rd">Ready for Finance Processing</span></td><td>30-10-2026 11:05 AM</td></tr>
+    <tr><td>PAY-20261030-094210-B7E3</td><td>30-10-2026</td><td>Admissions</td><td>Vendor C</td><td class="n">23,600</td><td>Approved</td><td>Pending</td><td>Pending</td><td><span class="pill p2">Pending Level 2 Approval</span></td><td>30-10-2026 02:40 PM</td></tr>
+    <tr><td>PAY-20261031-160501-2A8B</td><td>31-10-2026</td><td>Operations</td><td>Vendor D</td><td class="n">8,850</td><td>Pending</td><td>Pending</td><td>Pending</td><td><span class="pill p1">Pending Level 1 Approval</span></td><td>31-10-2026 04:05 PM</td></tr>
+    <tr><td>PAY-20261101-120933-D04C</td><td>01-11-2026</td><td>Events</td><td>Vendor E</td><td class="n">47,200</td><td>Rejected</td><td>Pending</td><td>Cancelled</td><td><span class="pill rj">Rejected at Level 1</span></td><td>01-11-2026 05:22 PM</td></tr>
+    <tr><td>PAY-20261102-101127-7F90</td><td>02-11-2026</td><td>IT</td><td>Vendor F</td><td class="n">2,36,000</td><td>Approved</td><td>Approved</td><td>Not Processed</td><td><span class="pill hd">Payment On Hold</span></td><td>03-11-2026 10:30 AM</td></tr>
+  </table>
+  <div class="note">Bank details, PAN and GST columns are also captured but hidden here. Every status change also emails the requester.</div>
+</body>
+</html>
